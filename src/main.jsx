@@ -4,8 +4,11 @@ import { BrowserRouter } from 'react-router-dom';
 import AppSwitcher from './AppSwitcher'; 
 import './App.css';
 
-// ملاحظة: تم إزالة استيراد react-onesignal من هنا لمنع خطأ Rollup failed to resolve import
-// وتم نقل منطق الإشعارات إلى AppSwitcher ليتناسب مع بيئة الأندرويد
+/**
+ * تم تنظيف هذا الملف بالكامل من أي مكتبات إشعارات خارجية.
+ * منطق الإشعارات (Firebase Push Notifications) موجود الآن داخل AppSwitcher 
+ * لضمان عمله فقط في بيئة الموبايل وتجنب تعليق التطبيق.
+ */
 
 const Main = () => {
   return (
@@ -17,4 +20,11 @@ const Main = () => {
   );
 };
 
-ReactDOM.createRoot(document.getElementById('root')).render(<Main />);
+// التأكد من استهداف عنصر الـ root بشكل صحيح
+const rootElement = document.getElementById('root');
+
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(<Main />);
+} else {
+  console.error("لم يتم العثور على عنصر 'root' في ملف HTML.");
+}
