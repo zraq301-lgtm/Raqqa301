@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import App from './App';
 import ProfileSetup from './pages/ProfileSetup';
+
+// استخدام مكتبة firebase التي أضفتها في package.json
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
@@ -14,17 +16,17 @@ const firebaseConfig = {
   appId: "1:162488255991:web:74fe1680fc6cb5bbc61af2"
 };
 
-// تهيئة Firebase مع فحص الدعم لتجنب تعليق المتصفحات القديمة
+// تهيئة Firebase
 const firebaseApp = initializeApp(firebaseConfig);
 let messaging = null;
 
+// التحقق من دعم المتصفح قبل تشغيل Messaging
 try {
-  // لا يتم تفعيل Messaging إلا إذا كان المتصفح يدعم الـ Service Worker
   if (typeof window !== "undefined" && "serviceWorker" in navigator) {
     messaging = getMessaging(firebaseApp);
   }
 } catch (e) {
-  console.error("Firebase Messaging non-compatible browser:", e);
+  console.error("Firebase Messaging غير مدعوم في هذا البيئة:", e);
 }
 
 function AppSwitcher() {
@@ -38,28 +40,27 @@ function AppSwitcher() {
 
   useEffect(() => {
     const setupWebPush = async () => {
-      // التأكد من وجود دعم للإشعارات في المتصفح قبل البدء
+      // التأكد من وجود دعم للإشعارات
       if (!("Notification" in window) || !messaging) {
-        console.warn("هذا المتصفح لا يدعم إشعارات الويب.");
+        console.warn("هذا الجهاز أو المتصفح لا يدعم إشعارات الويب.");
         return;
       }
 
       try {
+        // طلب الإذن - هذه هي اللحظة التي تظهر فيها الرسالة في الـ APK
         const permission = await Notification.requestPermission();
+        console.log("حالة الإذن الحالي:", permission);
         
         if (permission === 'granted') {
-          // جلب التوكن باستخدام مفتاح VAPID الخاص بك
+          // جلب التوكن باستخدام مفتاح VAPID الذي زودتني به
           const currentToken = await getToken(messaging, { 
             vapidKey: "USA0sr7ibILdXx1IdNyUIZGNAZxosK9trp5z96f45Nk" 
-          }).catch(err => {
-            console.error("فشل في استخراج التوكن (VAPID Error):", err);
-            return null;
           });
 
           if (currentToken) {
             console.log('FCM Token Ready:', currentToken);
             
-            // محاولة تحديث التوكن في الباك إند
+            // إرسال التوكن إلى Neon لإصلاح مشكلة الـ NULL
             try {
               const response = await fetch('/api/update-fcm-token', { 
                 method: 'POST',
@@ -70,26 +71,31 @@ function AppSwitcher() {
                 }),
               });
 
-              if (!response.ok) throw new Error("Server response not OK");
-              console.log('تم تحديث التوكن في قاعدة البيانات بنجاح');
+              if (response.ok) {
+                console.log('تم تحديث التوكن في نيون بنجاح');
+              }
             } catch (fetchError) {
-              console.error("فشل إرسال التوكن للباك إند:", fetchError);
+              console.error("خطأ في الاتصال بالباك إند:", fetchError);
             }
           }
+        } else {
+          console.warn("تم رفض إذن الإشعارات من قبل المستخدم.");
         }
       } catch (err) {
-        console.error("خطأ عام في إعدادات الإشعارات:", err);
+        console.error("حدث خطأ أثناء إعداد Firebase Messaging:", err);
       }
     };
 
     setupWebPush();
 
+    // الاستماع للإشعارات والتطبيق مفتوح
     if (messaging) {
       onMessage(messaging, (payload) => {
-        console.log('إشعار جديد في الواجهة:', payload);
+        console.log('إشعار جديد:', payload);
       });
     }
 
+    // إدارة زر الرجوع في الأندرويد
     const setupBackButton = async () => {
       if (window.Capacitor && window.Capacitor.isNativePlatform()) {
         try {
@@ -102,7 +108,7 @@ function AppSwitcher() {
             }
           });
         } catch (e) {
-          console.error("Capacitor BackButton Error:", e);
+          console.error("خطأ في Capacitor BackButton:", e);
         }
       }
     };
