@@ -21,29 +21,35 @@ export default async function handler(req, res) {
     try {
         let aiAdvice = `تم تحديث بياناتك في رقة ✨`;
 
-        // 1. طلب النصيحة من Make مع معالجة الخطأ الذي واجهته
+        // 1. إرسال البيانات إلى Make (Integromat)
+        // لاحظ استخدام الرابط الظاهر في سجلاتك
         try {
             const response = await fetch('https://hook.eu1.make.com/e9aratm1mdbwa38cfoerzdgfoqbco6ky', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id, fcm_token, category, current_weight, pregnancy_status })
+                body: JSON.stringify({ 
+                    user_id, 
+                    fcm_token: fcm_token && fcm_token !== 'باطل' ? fcm_token : "", // تجنب إرسال "باطل"
+                    category, 
+                    current_weight, 
+                    pregnancy_status 
+                })
             });
 
-            // فحص نوع الرد قبل محاولة تحويله لـ JSON
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
                 const data = await response.json();
                 if (data?.advice) aiAdvice = data.advice;
             } else {
-                // إذا كان الرد نصياً مثل "Accepted" نأخذه كنص أو نتجاهله
                 const textData = await response.text();
-                console.log("Make response was text, not JSON:", textData);
+                console.log("Make response was text:", textData);
             }
         } catch (e) { 
             console.error("Make fetch error (ignored to save in DB):", e); 
         }
 
-        // 2. الحفظ في نيون (سيتم الآن بغض النظر عن رد Make)
+        // 2. الحفظ في نيون (Neon Database)
+        // تم توحيد البيانات لتتطابق مع مشروع raqqa-43dc8
         await pool.sql`
             INSERT INTO notifications (
                 user_id, fcm_token, اسم_المستخدمة, الوزن_الحالي, 
@@ -52,14 +58,14 @@ export default async function handler(req, res) {
             )
             VALUES (
                 ${user_id}, 
-                ${fcm_token && fcm_token !== 'باطل' ? fcm_token : null}, 
+                ${fcm_token && fcm_token !== 'باطل' && fcm_token !== '' ? fcm_token : null}, 
                 ${username || 'زائرة رقة'}, 
                 ${current_weight || null}, 
                 ${height_cm || null}, 
                 ${period_date || null}, 
                 ${pregnancy_status || null}, 
                 ${medications || null}, 
-                ${'تحديث: ' + category}, 
+                ${'تحديث: ' + (category || 'بيانات عامة')}, 
                 ${aiAdvice}, 
                 NOW()
             );
