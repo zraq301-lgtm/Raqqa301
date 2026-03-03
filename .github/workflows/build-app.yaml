@@ -44,12 +44,15 @@ jobs:
       - name: 6. حقن صلاحيات المانيفست وأمن الشبكة
         run: |
           MANIFEST=$(find android -name "AndroidManifest.xml" | grep "main" | head -n 1)
-          # إضافة تصريح إذن الإشعارات المطلوب
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
+          # إضافة تصاريح الإشعارات والإنترنت لضمان عملها في الـ APK
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.WAKE_LOCK" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.RECORD_AUDIO" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' $MANIFEST
+          # تفعيلusesCleartextTraffic لحل مشكلة "جاري التحميل" في الـ APK
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' $MANIFEST
 
       - name: 7. بناء ملفات APK و AAB
