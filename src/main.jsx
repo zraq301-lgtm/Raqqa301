@@ -5,7 +5,7 @@ import AppSwitcher from './AppSwitcher';
 import './App.css';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { PushNotifications } from '@capacitor/push-notifications';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core'; // أضفنا CapacitorHttp هنا
 
 /**
  * إعدادات Firebase المحدثة لمشروع raqqa-43dc8
@@ -19,7 +19,7 @@ const firebaseConfig = {
   appId: "1:162488255991:android:73d6299f11a1b7aec61af2" //
 };
 
-// تهيئة Firebase بطريقة آمنة تمنع التكرار والتعليق
+// تهيئة Firebase بطريقة آمنة
 if (!getApps().length) {
   initializeApp(firebaseConfig);
 } else {
@@ -28,34 +28,50 @@ if (!getApps().length) {
 
 const Main = () => {
   useEffect(() => {
-    // تشغيل منطق الإشعارات فقط في بيئة الأندرويد/iOS الحقيقية
     if (Capacitor.isNativePlatform()) {
       const setupPush = async () => {
         try {
           let permStatus = await PushNotifications.checkPermissions();
-          
           if (permStatus.receive === 'prompt') {
             permStatus = await PushNotifications.requestPermissions();
           }
-
           if (permStatus.receive === 'granted') {
             await PushNotifications.register();
           }
         } catch (error) {
           console.error("خطأ أثناء إعداد الإشعارات: ", error);
-          // لا نعطل التطبيق في حال فشل الإشعارات
         }
       };
 
       setupPush();
 
-      // الاستماع للتوكن وحفظه في LocalStorage
-      PushNotifications.addListener('registration', (token) => {
+      // الاستماع للتوكن وحفظه فوراً في السيرفر (التسجيل المبدئي)
+      PushNotifications.addListener('registration', async (token) => {
+        // 1. التخزين المحلي للاستخدام في الصفحات الأخرى
         localStorage.setItem('fcm_token', token.value);
         console.log('FCM Token Registered:', token.value);
+
+        // 2. إرسال فوري إلى Vercel لحفظه في Neon وإرساله لـ Make
+        try {
+          const options = {
+            url: 'https://raqqa-hjl8.vercel.app/api/save-notifications',
+            headers: { 'Content-Type': 'application/json' },
+            data: {
+              fcm_token: token.value,
+              user_id: localStorage.getItem('user_id') || 'new_device_init',
+              username: 'جهاز مسجل حديثاً',
+              category: 'تسجيل تلقائي للجهاز',
+              note: 'تم حفظ التوكن فور تشغيل التطبيق'
+            }
+          };
+
+          const response = await CapacitorHttp.post(options);
+          console.log("تم التسجيل المبدئي للجهاز بنجاح:", response.data);
+        } catch (err) {
+          console.error("فشل إرسال التوكن المبدئي:", err);
+        }
       });
 
-      // التعامل مع أخطاء التسجيل لمنع تعليق الصفحة
       PushNotifications.addListener('registrationError', (error) => {
         console.error('Registration error: ', error);
       });
@@ -71,9 +87,7 @@ const Main = () => {
   );
 };
 
-// استهداف عنصر الـ root
 const rootElement = document.getElementById('root');
-
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(<Main />);
