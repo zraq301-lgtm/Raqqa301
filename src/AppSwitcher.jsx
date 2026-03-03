@@ -14,7 +14,7 @@ function AppSwitcher() {
   });
 
   useEffect(() => {
-    // دالة تهيئة Firebase وطلب الإذن
+    // دالة تهيئة Firebase وطلب الإذن وإرسال التوكن لـ Neon
     const setupFirebasePush = async () => {
       try {
         // 1. التحقق من صلاحيات الإشعارات الحالية
@@ -30,10 +30,26 @@ function AppSwitcher() {
           await PushNotifications.register();
         }
 
-        // 4. الحصول على الـ Token (ستحتاجه لربط Make.com لاحقاً)
-        await PushNotifications.addListener('registration', (token) => {
+        // 4. الحصول على الـ Token وإرساله للباك إند (لتحديث نيون)
+        await PushNotifications.addListener('registration', async (token) => {
           console.log('Firebase Token:', token.value);
-          // يمكنك إرسال التوكن لسيرفرك أو حفظه هنا
+          
+          // --- الجزء المضاف لربط نيون ---
+          try {
+            // استبدل الرابط أدناه برابط الـ API الفعلي الخاص بك
+            await fetch('https://your-api.com/update-fcm-token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: localStorage.getItem('userId'), // تأكد من تخزين معرف المستخدم عند التسجيل
+                fcmToken: token.value
+              }),
+            });
+            console.log('Token updated in Neon successfully');
+          } catch (fetchError) {
+            console.error("Error sending token to Backend:", fetchError);
+          }
+          // ----------------------------
         });
 
         // 5. معالجة الخطأ في حال فشل التسجيل
