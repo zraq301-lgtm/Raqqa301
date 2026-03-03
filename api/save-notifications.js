@@ -14,42 +14,36 @@ export default async function handler(req, res) {
     
     const { 
         user_id, fcm_token, username, current_weight, height_cm, 
-        period_date, cycle_days, pregnancy_status, breastfeeding_months,
-        doctor_type, medications, category, note 
+        period_date, pregnancy_status, medications, category, note 
     } = req.body;
 
-    try {
-        let aiAdvice = `تم تحديث بياناتك في رقة ✨`;
+    // التأكد من وجود التوكن كحد أدنى لمعالجة الطلب
+    if (!fcm_token || fcm_token === 'باطل' || fcm_token === '') {
+        return res.status(400).json({ error: "fcm_token is required and valid" });
+    }
 
-        // 1. إرسال البيانات إلى Make (Integromat)
-        // لاحظ استخدام الرابط الظاهر في سجلاتك
+    try {
+        let aiAdvice = note || `تم تحديث بيانات جهازك في رقة ✨`;
+
+        // 1. إرسال البيانات إلى Make (للتسجيل أو المعالجة)
         try {
-            const response = await fetch('https://hook.eu1.make.com/e9aratm1mdbwa38cfoerzdgfoqbco6ky', {
+            await fetch('https://hook.eu1.make.com/e9aratm1mdbwa38cfoerzdgfoqbco6ky', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     user_id, 
-                    fcm_token: fcm_token && fcm_token !== 'باطل' ? fcm_token : "", // تجنب إرسال "باطل"
-                    category, 
+                    fcm_token, 
+                    category: category || "registration", 
                     current_weight, 
                     pregnancy_status 
                 })
             });
-
-            const contentType = response.headers.get("content-type");
-            if (contentType && contentType.includes("application/json")) {
-                const data = await response.json();
-                if (data?.advice) aiAdvice = data.advice;
-            } else {
-                const textData = await response.text();
-                console.log("Make response was text:", textData);
-            }
         } catch (e) { 
-            console.error("Make fetch error (ignored to save in DB):", e); 
+            console.error("Make fetch error:", e); 
         }
 
-        // 2. الحفظ في نيون (Neon Database)
-        // تم توحيد البيانات لتتطابق مع مشروع raqqa-43dc8
+        // 2. الحفظ الذكي في نيون (تحديث السجل إذا كان التوكن موجوداً مسبقاً)
+        // نستخدم ON CONFLICT (fcm_token) لضمان عدم تكرار الأجهزة
         await pool.sql`
             INSERT INTO notifications (
                 user_id, fcm_token, اسم_المستخدمة, الوزن_الحالي, 
@@ -57,21 +51,28 @@ export default async function handler(req, res) {
                 title, body, created_at
             )
             VALUES (
-                ${user_id}, 
-                ${fcm_token && fcm_token !== 'باطل' && fcm_token !== '' ? fcm_token : null}, 
-                ${username || 'زائرة رقة'}, 
+                ${user_id || 'guest'}, 
+                ${fcm_token}, 
+                ${username || 'جهاز مسجل'}, 
                 ${current_weight || null}, 
                 ${height_cm || null}, 
                 ${period_date || null}, 
                 ${pregnancy_status || null}, 
                 ${medications || null}, 
-                ${'تحديث: ' + (category || 'بيانات عامة')}, 
+                ${'تحديث الجهاز: ' + (category || 'تلقائي')}, 
                 ${aiAdvice}, 
                 NOW()
-            );
+            )
+            ON CONFLICT (fcm_token) 
+            DO UPDATE SET 
+                user_id = EXCLUDED.user_id,
+                اسم_المستخدمة = COALESCE(EXCLUDED.اسم_المستخدمة, notifications.اسم_المستخدمة),
+                الوزن_الحالي = COALESCE(EXCLUDED.الوزن_الحالي, notifications.الوزن_الحالي),
+                body = EXCLUDED.body,
+                created_at = NOW();
         `;
 
-        return res.status(200).json({ success: true, advice: aiAdvice });
+        return res.status(200).json({ success: true, message: "تم تسجيل الجهاز وتحديث البيانات" });
 
     } catch (dbError) {
         console.error("Neon Database Error:", dbError);
