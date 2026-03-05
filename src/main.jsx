@@ -6,8 +6,6 @@ import './App.css';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
-// استيراد مكتبة OneSignal
-import OneSignal from 'onesignal-cordova-plugin';
 
 /**
  * إعدادات Firebase لمشروع raqqa-43dc8
@@ -31,23 +29,22 @@ const Main = () => {
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
       
-      // --- بداية إعداد OneSignal ---
+      // إعداد OneSignal بطريقة لا تكسر الـ Build
       const setupOneSignal = () => {
-        // تعريف التطبيق باستخدام المعرف الخاص بك
-        OneSignal.setAppId("726fe629-0b1e-4294-9a4b-39cf50212b42");
-
-        // طلب إذن الإشعارات من المستخدم (تظهر رسالة منبثقة)
-        OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
-          console.log("تم قبول إشعارات OneSignal: " + accepted);
-        });
-
-        // ربط المستخدم بـ user_id الخاص بك في OneSignal (اختياري للتنظيم)
-        const userId = localStorage.getItem('user_id') || 'guest_user';
-        OneSignal.setExternalUserId(userId);
+        const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+        if (OneSignal) {
+          OneSignal.setAppId("726fe629-0b1e-4294-9a4b-39cf50212b42");
+          OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
+            console.log("OneSignal Accepted: " + accepted);
+          });
+          const userId = localStorage.getItem('user_id') || 'guest_user';
+          OneSignal.setExternalUserId(userId);
+        } else {
+          console.warn("OneSignal plugin not found");
+        }
       };
       
       setupOneSignal();
-      // --- نهاية إعداد OneSignal ---
 
       const setupPush = async () => {
         try {
@@ -56,7 +53,7 @@ const Main = () => {
             id: 'fcm_default_channel',
             name: 'Default',
             description: 'قناة الإشعارات العامة لتطبيق رقة',
-            importance: 5, // أعلى درجة للأهمية لظهور الإشعار فوراً
+            importance: 5, 
             visibility: 1,
             sound: 'default',
             vibration: true
