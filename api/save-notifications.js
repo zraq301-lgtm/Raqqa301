@@ -23,17 +23,16 @@ export default async function handler(req, res) {
     try {
         let aiAdvice = note || `تم تحديث ملفك الصحي في رقة ✨`;
 
-        // 1. إرسال البيانات إلى Make
+        // 1. إرسال البيانات إلى Activepieces (تم تحديث الرابط هنا فقط)
         try {
-            await fetch('https://hook.eu1.make.com/e9aratm1mdbwa38cfoerzdgfoqbco6ky', {
+            await fetch('https://cloud.activepieces.com/api/v1/webhooks/YOUR_WEBHOOK_ID_HERE', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id, fcm_token: activeToken, category, current_weight })
             });
-        } catch (e) { console.error("Make Error:", e); }
+        } catch (e) { console.error("Activepieces Error:", e); }
 
         // 2. الحفظ الذكي (Upsert): البحث عن التوكن وتحديث بياناته
-        // هذا الاستعلام يضمن دمج البيانات الصحية مع التوكن المسجل عند الافتتاح
         await pool.sql`
             INSERT INTO notifications (
                 user_id, fcm_token, اسم_المستخدمة, الوزن_الحالي, 
