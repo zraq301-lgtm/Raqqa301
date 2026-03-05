@@ -6,6 +6,8 @@ import './App.css';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+// استيراد مكتبة OneSignal
+import OneSignal from 'onesignal-cordova-plugin';
 
 /**
  * إعدادات Firebase لمشروع raqqa-43dc8
@@ -29,31 +31,31 @@ const Main = () => {
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
       
-      // إعداد OneSignal بطريقة لا تكسر الـ Build
+      // --- إعداد OneSignal بالمعرف الجديد ---
       const setupOneSignal = () => {
-        const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
-        if (OneSignal) {
-          OneSignal.setAppId("726fe629-0b1e-4294-9a4b-39cf50212b42");
-          OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
-            console.log("OneSignal Accepted: " + accepted);
-          });
-          const userId = localStorage.getItem('user_id') || 'guest_user';
-          OneSignal.setExternalUserId(userId);
-        } else {
-          console.warn("OneSignal plugin not found");
-        }
+        // تم استبدال المعرف هنا بناءً على طلبك
+        OneSignal.setAppId("cd7a8168-5e86-4fa8-a32d-58791213b25a");
+
+        // طلب إذن الإشعارات
+        OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
+          console.log("OneSignal status: " + accepted);
+        });
+
+        // ربط هوية المستخدم (اختياري)
+        const userId = localStorage.getItem('user_id') || 'guest_user';
+        OneSignal.setExternalUserId(userId);
       };
       
       setupOneSignal();
 
       const setupPush = async () => {
         try {
-          // 1. إنشاء قناة الإشعارات (مهم جداً لأندرويد)
+          // 1. إنشاء قناة الإشعارات لأندرويد
           await PushNotifications.createChannel({
             id: 'fcm_default_channel',
             name: 'Default',
             description: 'قناة الإشعارات العامة لتطبيق رقة',
-            importance: 5, 
+            importance: 5,
             visibility: 1,
             sound: 'default',
             vibration: true
@@ -67,13 +69,13 @@ const Main = () => {
             await PushNotifications.register();
           }
         } catch (error) {
-          console.error("خطأ أثناء إعداد الإشعارات: ", error);
+          console.error("خطأ في إعداد الإشعارات: ", error);
         }
       };
 
       setupPush();
 
-      // 2. الاستماع للتوكن والتسجيل في السيرفر
+      // 2. الاستماع للتوكن وتسجيله
       PushNotifications.addListener('registration', async (token) => {
         localStorage.setItem('fcm_token', token.value);
         try {
@@ -85,23 +87,23 @@ const Main = () => {
               user_id: localStorage.getItem('user_id') || 'new_device_init',
               username: 'جهاز مسجل حديثاً',
               category: 'تسجيل تلقائي للجهاز',
-              note: 'تم تفعيل مستمعات الإشعارات بنجاح'
+              note: 'تم تفعيل المستمعات بنجاح'
             }
           });
         } catch (err) {
-          console.error("فشل إرسال التوكن المبدئي:", err);
+          console.error("فشل إرسال التوكن:", err);
         }
       });
 
-      // 3. دالة سماع الإشعار عند وصوله والتطبيق مفتوح (Foreground)
+      // 3. الاستماع عند وصول إشعار (والتطبيق مفتوح)
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('وصل إشعار جديد:', notification);
+        console.log('إشعار جديد:', notification);
         alert(`${notification.title}\n\n${notification.body}`);
       });
 
-      // 4. دالة سماع الإشعار عند الضغط عليه (Action Performed)
+      // 4. الاستماع عند الضغط على الإشعار
       PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        console.log('تم الضغط على الإشعار:', notification.notification);
+        console.log('تم فتح الإشعار:', notification.notification);
       });
 
       PushNotifications.addListener('registrationError', (error) => {
