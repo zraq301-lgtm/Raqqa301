@@ -6,6 +6,8 @@ import './App.css';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+// استيراد مكتبة OneSignal
+import OneSignal from 'onesignal-cordova-plugin';
 
 /**
  * إعدادات Firebase لمشروع raqqa-43dc8
@@ -28,6 +30,25 @@ if (!getApps().length) {
 const Main = () => {
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
+      
+      // --- بداية إعداد OneSignal ---
+      const setupOneSignal = () => {
+        // تعريف التطبيق باستخدام المعرف الخاص بك
+        OneSignal.setAppId("726fe629-0b1e-4294-9a4b-39cf50212b42");
+
+        // طلب إذن الإشعارات من المستخدم (تظهر رسالة منبثقة)
+        OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
+          console.log("تم قبول إشعارات OneSignal: " + accepted);
+        });
+
+        // ربط المستخدم بـ user_id الخاص بك في OneSignal (اختياري للتنظيم)
+        const userId = localStorage.getItem('user_id') || 'guest_user';
+        OneSignal.setExternalUserId(userId);
+      };
+      
+      setupOneSignal();
+      // --- نهاية إعداد OneSignal ---
+
       const setupPush = async () => {
         try {
           // 1. إنشاء قناة الإشعارات (مهم جداً لأندرويد)
@@ -78,14 +99,12 @@ const Main = () => {
       // 3. دالة سماع الإشعار عند وصوله والتطبيق مفتوح (Foreground)
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
         console.log('وصل إشعار جديد:', notification);
-        // يمكنك هنا إظهار نافذة منبثقة داخل التطبيق إذا أردت
         alert(`${notification.title}\n\n${notification.body}`);
       });
 
       // 4. دالة سماع الإشعار عند الضغط عليه (Action Performed)
       PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
         console.log('تم الضغط على الإشعار:', notification.notification);
-        // يمكنك هنا توجيه المستخدم لصفحة معينة
       });
 
       PushNotifications.addListener('registrationError', (error) => {
