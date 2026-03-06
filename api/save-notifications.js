@@ -2,7 +2,7 @@ import { createPool } from '@vercel/postgres';
 
 // الاتصال بقاعدة البيانات
 const pool = createPool({
-  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL
+    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL
 });
 
 export default async function handler(req, res) {
@@ -21,18 +21,25 @@ export default async function handler(req, res) {
     const activeUserId = user_id || 'init_user';
 
     try {
+        // تحديد نص الإشعار
         let aiAdvice = note || `تم تحديث ملفك الصحي في رقة ✨`;
 
-        // 1. إرسال البيانات إلى Make
+        // 1. إرسال البيانات إلى Make (التعديل هنا ليتوافق مع كود الاستقبال)
         try {
             await fetch('https://hook.eu1.make.com/e9aratm1mdbwa38cfoerzdgfoqbco6ky', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: activeUserId, fcm_token, username, category, note: aiAdvice })
+                body: JSON.stringify({ 
+                    title: category || "تحديث صحي", // العنوان
+                    message: aiAdvice,             // الرسالة (نفس اسم الحقل في الاستقبال)
+                    fcm_token: fcm_token,          // توكن الجهاز (الاسم المطلوب)
+                    username: username,
+                    user_id: activeUserId
+                })
             });
         } catch (e) { console.error("Make Error:", e); }
 
-        // 2. الحفظ في نيون (تأكد أنك نفذت أمر RENAME COLUMN في نيون)
+        // 2. الحفظ في قاعدة بيانات Postgres (نيون)
         await pool.sql`
             INSERT INTO notifications (user_id, fcm_token, username, current_weight, height_cm, title, body, created_at)
             VALUES (${activeUserId}, ${fcm_token}, ${username}, ${current_weight}, ${height_cm}, ${category}, ${aiAdvice}, NOW())
@@ -44,8 +51,9 @@ export default async function handler(req, res) {
                 created_at = NOW();
         `;
 
-        return res.status(200).json({ success: true });
+        return res.status(200).json({ success: true, status: "تم الإرسال والحفظ بنجاح" });
     } catch (dbError) {
+        console.error("DB Error:", dbError.message);
         return res.status(500).json({ error: dbError.message });
     }
 }
