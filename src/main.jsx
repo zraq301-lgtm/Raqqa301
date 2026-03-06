@@ -6,11 +6,9 @@ import './App.css';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
-// استيراد مكتبة OneSignal
-import OneSignal from 'onesignal-cordova-plugin';
 
 /**
- * إعدادات Firebase لمشروع raqqa-43dc8
+ * إعدادات Firebase - محرك استقبال البيانات
  */
 const firebaseConfig = {
   apiKey: "AIzaSyAKjsgnoHnGGr3urhm6Kpu7RvxN2dp6sJQ",
@@ -21,40 +19,41 @@ const firebaseConfig = {
   appId: "1:162488255991:android:73d6299f11a1b7aec61af2"
 };
 
-if (!getApps().length) {
-  initializeApp(firebaseConfig);
-} else {
-  getApp();
-}
+// تهيئة Firebase لضمان عدم حدوث تصادم
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 const Main = () => {
   useEffect(() => {
+    // تشغيل المحرك فقط إذا كنا على منصة حقيقية (Android/iOS)
     if (Capacitor.isNativePlatform()) {
       
-      // --- إعداد OneSignal بالمعرف الجديد ---
-      const setupOneSignal = () => {
-        // تم تحديث المعرف هنا كما طلبت بالضبط
-        OneSignal.setAppId("cd7a8168-5e86-4fa8-a32d-58791213b25a");
+      // إعداد OneSignal بطريقة ديناميكية لمنع الشاشة البيضاء
+      const setupOneSignal = async () => {
+        try {
+          // استدعاء المكتبة برمجياً فقط في بيئة الهاتف
+          const OneSignal = (await import('onesignal-cordova-plugin')).default;
+          
+          OneSignal.setAppId("cd7a8168-5e86-4fa8-a32d-58791213b25a");
 
-        // طلب إذن الإشعارات
-        OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
-          console.log("OneSignal status: " + accepted);
-        });
+          OneSignal.promptForPushNotificationsWithUserResponse((accepted) => {
+            console.log("OneSignal status: " + accepted);
+          });
 
-        // ربط هوية المستخدم (اختياري)
-        const userId = localStorage.getItem('user_id') || 'guest_user';
-        OneSignal.setExternalUserId(userId);
+          const userId = localStorage.getItem('user_id') || 'guest_user';
+          OneSignal.setExternalUserId(userId);
+        } catch (e) {
+          console.error("OneSignal Error:", e);
+        }
       };
       
       setupOneSignal();
 
+      // إعداد Capacitor Push Notifications (للحصول على التوكن وإرساله لنيون)
       const setupPush = async () => {
         try {
-          // 1. إنشاء قناة الإشعارات لأندرويد
           await PushNotifications.createChannel({
             id: 'fcm_default_channel',
             name: 'Default',
-            description: 'قناة الإشعارات العامة لتطبيق رقة',
             importance: 5,
             visibility: 1,
             sound: 'default',
@@ -69,15 +68,17 @@ const Main = () => {
             await PushNotifications.register();
           }
         } catch (error) {
-          console.error("خطأ في إعداد الإشعارات: ", error);
+          console.error("Push Setup Error: ", error);
         }
       };
 
       setupPush();
 
-      // 2. الاستماع للتوكن وتسجيله
+      // المستمع (Listener) لإرسال التوكن لـ Vercel/Neon
       PushNotifications.addListener('registration', async (token) => {
+        console.log('Token registered:', token.value);
         localStorage.setItem('fcm_token', token.value);
+        
         try {
           await CapacitorHttp.post({
             url: 'https://raqqa-hjl8.vercel.app/api/save-notifications',
@@ -85,44 +86,31 @@ const Main = () => {
             data: {
               fcm_token: token.value,
               user_id: localStorage.getItem('user_id') || 'new_device_init',
-              username: 'جهاز مسجل حديثاً',
+              username: localStorage.getItem('username') || 'مستخدمة رقة',
               category: 'تسجيل تلقائي للجهاز',
-              note: 'تم تفعيل المستمعات بنجاح'
+              note: 'تم ربط المحرك بنجاح'
             }
           });
         } catch (err) {
-          console.error("فشل إرسال التوكن:", err);
+          console.error("فشل إرسال التوكن للسيرفر:", err);
         }
       });
 
-      // 3. الاستماع عند وصول إشعار (والتطبيق مفتوح)
+      // التعامل مع الإشعارات أثناء فتح التطبيق
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('إشعار جديد:', notification);
-        alert(`${notification.title}\n\n${notification.body}`);
-      });
-
-      // 4. الاستماع عند الضغط على الإشعار
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        console.log('تم فتح الإشعار:', notification.notification);
-      });
-
-      PushNotifications.addListener('registrationError', (error) => {
-        console.error('Registration error: ', error);
+        alert(`${notification.title}\n${notification.body}`);
       });
     }
   }, []);
 
   return (
-    <React.StrictMode>
-      <BrowserRouter>
-        <AppSwitcher />
-      </BrowserRouter>
-    </React.StrictMode>
+    <BrowserRouter>
+      <AppSwitcher />
+    </BrowserRouter>
   );
 };
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(<Main />);
+  ReactDOM.createRoot(rootElement).render(<Main />);
 }
