@@ -1,0 +1,17 @@
+name: Deploy Firebase Functions
+on:
+  push:
+    branches:
+      - main # أو اسم الفرع الذي تستخدمه
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Install Firebase Tools
+        run: npm install -g firebase-tools
+      - name: Deploy to Firebase
+        run: firebase deploy --only functions --token "${{ secrets.FIREBASE_TOKEN }}"
