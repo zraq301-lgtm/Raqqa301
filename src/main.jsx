@@ -1,69 +1,108 @@
-// ... (نفس الـ imports ونفس الـ config)
+import React, { useEffect } from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import AppSwitcher from './AppSwitcher'; 
+import './App.css';
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+
+// إعدادات Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyAKjsgnoHnGGr3urhm6Kpu7RvxN2dp6sJQ",
+  authDomain: "raqqa-43dc8.firebaseapp.com",
+  projectId: "raqqa-43dc8",
+  storageBucket: "raqqa-43dc8.firebasestorage.app",
+  messagingSenderId: "162488255991",
+  appId: "1:162488255991:android:73d6299f11a1b7aec61af2"
+};
+
+// تهيئة Firebase بأمان
+if (!getApps().length) {
+  initializeApp(firebaseConfig);
+}
 
 const Main = () => {
+  
+  // وظيفة الحفظ في نيون وإرسال ويب هوك لـ ميك (تعريفها خارج useEffect لمنع أخطاء الترتيب)
+  const saveTokenToServer = async (tokenValue) => {
+    try {
+      const uId = localStorage.getItem('user_id') || 'user_' + Math.floor(Math.random() * 1000000);
+      if (!localStorage.getItem('user_id')) localStorage.setItem('user_id', uId);
+
+      const response = await CapacitorHttp.post({
+        url: 'https://raqqa-hjl8.vercel.app/api/save-notifications', // الرابط الجديد الذي زودتني به
+        headers: { 'Content-Type': 'application/json' },
+        data: {
+          fcm_token: tokenValue,
+          user_id: uId,
+          username: localStorage.getItem('username') || 'مستخدمة رقة',
+          category: 'تسجيل تلقائي',
+          note: 'تم استلام التوكن فور منح الصلاحية أو الدخول'
+        }
+      });
+      console.log("تم الحفظ في نيون و ميك بنجاح:", response.data);
+    } catch (err) {
+      console.error("فشل إرسال البيانات للباك اند:", err);
+    }
+  };
+
   useEffect(() => {
+    // تشغيل المنطق فقط على الهاتف
     if (Capacitor.isNativePlatform()) {
       
-      const setupPush = async () => {
+      const initPush = async () => {
         try {
           let permStatus = await PushNotifications.checkPermissions();
+          
           if (permStatus.receive === 'prompt') {
             permStatus = await PushNotifications.requestPermissions();
           }
 
           if (permStatus.receive === 'granted') {
+            // التسجيل لجلب التوكن من فيربيس
             await PushNotifications.register();
-            
-            // --- إضافة: التأكد من سحب التوكن يدوياً في كل مرة يفتح فيها التطبيق ---
-            // هذا يضمن أن التوكن موجود في localStorage حتى لو لم يشتغل الـ listener
-            try {
-              // ملاحظة: بعض الإصدارات تتطلب Capacitor Firebase Cloud Messaging plugin لجلب التوكن يدوياً
-              // ولكن سنعتمد على التخزين المستمر
-              console.log("جاري التحقق من حالة التسجيل...");
-            } catch (e) { console.log(e); }
-            
           }
-        } catch (error) { console.error("Push Error: ", error); }
+        } catch (error) {
+          console.error("Push Init Error:", error);
+        }
       };
 
-      setupPush();
+      // 1. بدء عملية جلب الصلاحيات والتسجيل
+      initPush();
 
-      // مستمع التسجيل - يشتغل عند توليد توكن جديد
-      PushNotifications.addListener('registration', async (token) => {
+      // 2. مستمع استلام التوكن (بمجرد أن يوافق المستخدم أو يسجل الدخول)
+      PushNotifications.addListener('registration', (token) => {
         const fcmToken = token.value;
-        console.log("FCM Token Received:", fcmToken);
+        console.log("FCM Token Generated:", fcmToken);
         
-        // حفظ التوكن فوراً
+        // حفظ في الذاكرة المحلية فوراً
         localStorage.setItem('fcm_token', fcmToken);
-
-        // تأكيد وجود user_id
-        const userId = localStorage.getItem('user_id') || 'user_' + Math.floor(Math.random() * 1000000);
-        localStorage.setItem('user_id', userId);
         
-        // إرسال تحديث للسيرفر
-        sendTokenToApi(fcmToken, userId);
+        // تنفيذ الحفظ التلقائي في الباك اند و ميك و نيون
+        saveTokenToServer(fcmToken);
       });
 
-      // وظيفة منفصلة للإرسال لضمان نظافة الكود
-      const sendTokenToApi = async (token, userId) => {
-        try {
-          await CapacitorHttp.post({
-            url: 'https://raqqa-v6cd.vercel.app/api/save-notifications',
-            headers: { 'Content-Type': 'application/json' },
-            data: {
-              fcm_token: token,
-              user_id: userId,
-              username: localStorage.getItem('username') || 'مستخدمة رقة',
-              category: 'تحديث تلقائي للتوكن',
-              note: 'تم التأكد من صحة التوكن عند تشغيل التطبيق'
-            }
-          });
-        } catch (err) { console.error("API Sync Error:", err); }
-      };
+      // 3. معالجة أخطاء التسجيل
+      PushNotifications.addListener('registrationError', (error) => {
+        console.error("Error on registration: ", error.error);
+      });
 
-      // ... (بقية المستمعين)
+      // 4. استلام الإشعارات والتطبيق مفتوح
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        alert(`${notification.title}\n${notification.body}`);
+      });
     }
   }, []);
 
-  // ... (نفس الـ return)
+  return (
+    <BrowserRouter>
+      <AppSwitcher />
+    </BrowserRouter>
+  );
 };
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(<Main />);
+}
