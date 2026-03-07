@@ -20,16 +20,29 @@ export default async function handler(req, res) {
         period_date, pregnancy_status, medications, category, note 
     } = req.body;
 
-    // 1. منطق معالجة التوكن (التعديل الجديد)
-    // بما أننا ألغينا OneSignal، سنعتمد كلياً على fcm_token
-    const activeToken = fcm_token && fcm_token.trim() !== "" ? fcm_token : null;
     const activeUserId = user_id || 'init_user';
     const aiAdvice = note || `تم تحديث ملفك الصحي في رقة ✨`;
+    
+    // متغير لحمل التوكن النهائي (سواء جاء من الطلب أو من قاعدة البيانات)
+    let finalToken = fcm_token && fcm_token.trim() !== "" ? fcm_token : null;
 
     try {
+        // --- التعديل الذكي الجديد ---
+        // 1. إذا كان التوكن مفقوداً (طلب من صفحة داخلية)، نبحث عنه في نيون باستخدام user_id
+        if (!finalToken) {
+            const userLookup = await pool.query(
+                'SELECT fcm_token FROM notifications WHERE user_id = $1 LIMIT 1',
+                [activeUserId]
+            );
+            if (userLookup.rows.length > 0 && userLookup.rows[0].fcm_token) {
+                finalToken = userLookup.rows[0].fcm_token;
+                console.log("استعادة التوكن من نيون للمستخدم:", activeUserId);
+            }
+        }
+
         // 2. إرسال البيانات إلى Make.com
-        // نرسل الطلب فقط إذا كان هناك توكن لتجنب الـ Bad Request في Make
-        if (activeToken) {
+        // نرسل الطلب فقط إذا توفر التوكن (لمنع خطأ Bad Request)
+        if (finalToken) {
             try {
                 await fetch('https://hook.eu1.make.com/e9aratm1mdbwa38cfoerzdgfoqbco6ky', {
                     method: 'POST',
@@ -37,10 +50,12 @@ export default async function handler(req, res) {
                     body: JSON.stringify({ 
                         title: category || "تحديث صحي", 
                         message: aiAdvice,             
-                        fcm_token: activeToken,
+                        fcm_token: finalToken, // التوكن المستعاد أو الجديد
                         username: username || "مستخدمة رقة",
                         user_id: activeUserId,
-                        note: aiAdvice
+                        note: aiAdvice,
+                        weight: current_weight,
+                        height: height_cm
                     })
                 });
             } catch (e) { 
@@ -58,15 +73,15 @@ export default async function handler(req, res) {
             ON CONFLICT (user_id) 
             DO UPDATE SET 
                 fcm_token = COALESCE(EXCLUDED.fcm_token, notifications.fcm_token),
-                الوزن_الحالي = EXCLUDED.الوزن_الحالي,
-                الطول_سم = EXCLUDED.الطول_سم,
+                الوزن_الحالي = COALESCE(EXCLUDED.الوزن_الحالي, notifications.الوزن_الحالي),
+                الطول_سم = COALESCE(EXCLUDED.الطول_سم, notifications.الطول_سم),
                 body = EXCLUDED.body,
                 created_at = NOW();
         `;
 
         const values = [
             activeUserId, 
-            activeToken, 
+            finalToken, // نستخدم التوكن النهائي لضمان عدم ضياعه
             username || 'زائرة رقة',
             current_weight || null, 
             height_cm || null, 
@@ -81,8 +96,8 @@ export default async function handler(req, res) {
 
         return res.status(200).json({ 
             success: true, 
-            status: "تم التحديث بنجاح",
-            token_status: activeToken ? "received" : "missing",
+            status: "تمت معالجة البيانات بنجاح",
+            token_found: !!finalToken,
             user: activeUserId
         });
 
