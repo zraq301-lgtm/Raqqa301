@@ -1,25 +1,35 @@
 import admin from 'firebase-admin';
 
-// إعداد بيانات الحساب الخدمي
+/**
+ * إعدادات الحساب الخدمي - تم تحسين معالجة المفتاح الخاص
+ * للتعامل مع رموز الأسطر الجديدة (\n) التي تظهر في سجلات Vercel
+ */
 const serviceAccount = {
   "type": "service_account",
   "project_id": "raqqa-43dc8",
   "client_email": "firebase-adminsdk-fbsvc@raqqa-43dc8.iam.gserviceaccount.com",
-  "private_key": process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+  // المعالجة المزدوجة تضمن قبول المفتاح سواء كان بأسطر حقيقية أو رموز \n
+  "private_key": process.env.FIREBASE_PRIVATE_KEY 
+    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
+    : undefined,
 };
 
 /**
- * دالة تهيئة Firebase Admin بأمان لمنع انهيار السيرفر
+ * دالة تهيئة Firebase Admin
+ * تمنع إعادة التهيئة التي تسبب خطأ 500 وتضمن استقرار السيرفر
  */
 function initializeFirebase() {
   if (!admin.apps.length) {
     try {
+      if (!serviceAccount.private_key) {
+        throw new Error("FIREBASE_PRIVATE_KEY مفقود من متغيرات البيئة في Vercel.");
+      }
+      
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
-      console.log("✅ تم تهيئة Firebase Admin بنجاح.");
+      console.log("✅ تم تهيئة Firebase Admin بنجاح باستخدام المفتاح الجديد.");
     } catch (error) {
-      // طباعة الخطأ بالتفصيل في سجلات فيرسل
       console.error('❌ خطأ حرج في تهيئة Firebase:', {
         message: error.message,
         stack: error.stack,
@@ -30,29 +40,30 @@ function initializeFirebase() {
 }
 
 export default async function (req, res) {
-  // تشغيل التهيئة
+  // تشغيل التهيئة عند كل طلب جديد
   initializeFirebase();
 
-  // 1. التحقق من طريقة الطلب
+  // 1. السماح بطلبات POST فقط
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'الطريقة غير مسموحة، استخدم POST فقط.' });
   }
 
-  // 2. التحقق من وجود البيانات الأساسية
+  // 2. استخراج البيانات من جسم الطلب
   const { fcmToken, title, body } = req.body;
 
+  // 3. التحقق من وجود التوكن (لمنع خطأ 400)
   if (!fcmToken) {
-    console.error("⚠️ محاولة إرسال فاشلة: fcmToken مفقود في الطلب.");
+    console.error("⚠️ طلب مرفوض: fcmToken مفقود.");
     return res.status(400).json({ error: 'fcmToken is required' });
   }
 
-  // 3. التحقق من وجود المفتاح الخاص في البيئة (Environment Variable)
+  // 4. فحص أمان المفتاح الخاص قبل محاولة الإرسال لجوجل
   if (!serviceAccount.private_key) {
-    console.error("❌ خطأ إعدادات: FIREBASE_PRIVATE_KEY غير موجود في إعدادات Vercel.");
-    return res.status(500).json({ error: 'Server configuration error: Missing Private Key' });
+    return res.status(500).json({ error: 'خطأ في إعدادات السيرفر: المفتاح الخاص غير متوفر.' });
   }
 
   try {
+    // تجهيز رسالة الإشعار
     const message = {
       notification: { 
         title: title || "رقة", 
@@ -61,27 +72,29 @@ export default async function (req, res) {
       token: fcmToken
     };
 
+    // محاولة الإرسال الفعلية عبر FCM
     const response = await admin.messaging().send(message);
     
-    console.log("🚀 تم إرسال الإشعار بنجاح:", response);
+    console.log("🚀 نجاح: تم إرسال الإشعار بنجاح. ID:", response);
     return res.status(200).json({ success: true, messageId: response });
 
   } catch (error) {
     /**
-     * دالة تتبع الأخطاء المفصلة:
-     * ستظهر لك في سجلات Vercel سبب الفشل بدقة (مثلاً: توكن غير صالح، أو انتهاء صلاحية المفتاح)
+     * سجل أخطاء مفصل يظهر في Vercel Logs
+     * يساعد في معرفة ما إذا كان الخطأ من التوكن أو من صلاحيات المفتاح
      */
-    console.error('❌ فشل إرسال الإشعار. التفاصيل الدقيقة:', {
-      error_code: error.code,       // كود الخطأ من جوجل
-      error_message: error.message, // رسالة الخطأ بالإنجليزية
-      token_used: fcmToken.substring(0, 10) + "...", // عرض جزء من التوكن للتأكد
+    console.error('❌ فشل إرسال الإشعار. التفاصيل:', {
+      error_code: error.code,       // مثل 'app/invalid-credential' أو 'messaging/invalid-registration-token'
+      error_message: error.message,
+      token_preview: fcmToken.substring(0, 15) + "...",
       timestamp: new Date().toISOString()
     });
 
-    // إرسال رد واضح للواجهة الأمامية
+    // إرسال رد تفصيلي للمساعدة في التصحيح
     return res.status(500).json({ 
-      error: 'فشل إرسال الإشعار لجوجل', 
-      debug_info: error.message 
+      error: 'فشل الإرسال لجوجل', 
+      code: error.code,
+      debug: error.message 
     });
   }
 }
