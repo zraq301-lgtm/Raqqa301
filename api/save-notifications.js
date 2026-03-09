@@ -2,17 +2,16 @@ import admin from 'firebase-admin';
 import pkg from 'pg';
 const { Pool } = pkg;
 
-// إعداد الاتصال مع تعديل الـ SSL لإزالة التحذير
+// 1. الاتصال بـ نيون باستخدام DATABASE_URL
 const pool = new Pool({
-  // إضافة البرامتر sslmode=verify-full في نهاية الرابط يحل التحذير أمنياً
-  connectionString: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes('?') ? '&' : '?') + 'sslmode=verify-full',
+  connectionString: process.env.DATABASE_URL,
   ssl: { 
     rejectUnauthorized: false,
-    // هذا السطر يخبر المكتبة بتجاوز فحص الهوية المتكرر الذي يسبب التحذير
     checkServerIdentity: () => undefined 
   }
 });
 
+// 2. إعداد Firebase باستخدام FIREBASE_PRIVATE_KEY
 const serviceAccount = {
   "type": "service_account",
   "project_id": "raqqa-43dc8",
@@ -27,46 +26,58 @@ if (!admin.apps.length) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  // استخدام السر الخاص بك للتأكد من هوية الطلب
+  const expectedSecret = "zazo.tona.25sond.12"; 
+  const authHeader = req.headers['authorization'];
 
-  const { 
-    fcmToken, user_id = 1, category = 'general', data_content = {}, 
-    ai_analysis = null, title = "رقة", body = "تنبيه جديد", scheduled_for = null 
-  } = req.body;
+  if (authHeader !== `Bearer ${expectedSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized access' });
+  }
 
   try {
-    const isScheduled = !!scheduled_for;
+    // 3. سحب الإشعارات المستحقة من نيون
+    const { rows } = await pool.query(`
+      SELECT id, fcm_token, title, body 
+      FROM notifications 
+      WHERE is_sent = false 
+      AND scheduled_for <= NOW() 
+      AND fcm_token IS NOT NULL
+      LIMIT 50
+    `);
 
-    // 1. الحفظ في نيون (Neon DB)
-    const query = `
-      INSERT INTO notifications (
-        user_id, fcm_token, category, data_content, 
-        ai_analysis, title, body, scheduled_for, is_sent
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id
-    `;
-
-    const values = [
-      user_id, fcmToken, category, JSON.stringify(data_content),
-      ai_analysis, title, body, scheduled_for, !isScheduled
-    ];
-
-    const result = await pool.query(query, values);
-    const dbId = result.rows[0].id;
-
-    // 2. الإرسال لـ Firebase إذا كان فورياً
-    if (!isScheduled && fcmToken) {
-      await admin.messaging().send({
-        notification: { title, body },
-        token: fcmToken
-      });
-      return res.status(200).json({ success: true, mode: 'Instant', db_id: dbId });
+    if (rows.length === 0) {
+      return res.status(200).json({ message: "لا توجد مواعيد حالياً" });
     }
 
-    return res.status(200).json({ success: true, mode: 'Scheduled', db_id: dbId });
+    const sentIds = [];
+
+    // 4. إرسال الإشعارات إلى Firebase
+    for (const note of rows) {
+      try {
+        await admin.messaging().send({
+          token: note.fcm_token,
+          notification: {
+            title: note.title || "رقة",
+            body: note.body
+          }
+        });
+        sentIds.push(note.id);
+      } catch (err) {
+        console.error(`❌ فشل الإرسال للسجل ${note.id}:`, err.message);
+      }
+    }
+
+    // 5. تحديث حالة الإرسال في نيون
+    if (sentIds.length > 0) {
+      await pool.query("UPDATE notifications SET is_sent = true WHERE id = ANY($1)", [sentIds]);
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      processed_count: sentIds.length 
+    });
 
   } catch (error) {
-    console.error('❌ Error:', error.message);
     return res.status(500).json({ error: error.message });
   }
 }
