@@ -1,14 +1,20 @@
 import admin from 'firebase-admin';
+import { Pool } from 'pg';
 
 /**
- * إعدادات الحساب الخدمي - تم تحسين معالجة المفتاح الخاص
- * للتعامل مع رموز الأسطر الجديدة (\n) التي تظهر في سجلات Vercel
+ * إعداد اتصال Neon DB باستخدام المتغير DATABASE_URL
+ */
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+/**
+ * إعدادات الحساب الخدمي لـ Firebase
  */
 const serviceAccount = {
   "type": "service_account",
   "project_id": "raqqa-43dc8",
   "client_email": "firebase-adminsdk-fbsvc@raqqa-43dc8.iam.gserviceaccount.com",
-  // المعالجة المزدوجة تضمن قبول المفتاح سواء كان بأسطر حقيقية أو رموز \n
   "private_key": process.env.FIREBASE_PRIVATE_KEY 
     ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
     : undefined,
@@ -16,84 +22,105 @@ const serviceAccount = {
 
 /**
  * دالة تهيئة Firebase Admin
- * تمنع إعادة التهيئة التي تسبب خطأ 500 وتضمن استقرار السيرفر
  */
 function initializeFirebase() {
   if (!admin.apps.length) {
     try {
       if (!serviceAccount.private_key) {
-        throw new Error("FIREBASE_PRIVATE_KEY مفقود من متغيرات البيئة في Vercel.");
+        throw new Error("FIREBASE_PRIVATE_KEY مفقود من متغيرات البيئة.");
       }
-      
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
-      console.log("✅ تم تهيئة Firebase Admin بنجاح باستخدام المفتاح الجديد.");
+      console.log("✅ تم تهيئة Firebase Admin بنجاح.");
     } catch (error) {
-      console.error('❌ خطأ حرج في تهيئة Firebase:', {
-        message: error.message,
-        stack: error.stack,
-        time: new Date().toISOString()
-      });
+      console.error('❌ خطأ في تهيئة Firebase:', error.message);
     }
   }
 }
 
 export default async function (req, res) {
-  // تشغيل التهيئة عند كل طلب جديد
   initializeFirebase();
 
-  // 1. السماح بطلبات POST فقط
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'الطريقة غير مسموحة، استخدم POST فقط.' });
+    return res.status(405).json({ error: 'استخدم POST فقط.' });
   }
 
-  // 2. استخراج البيانات من جسم الطلب
-  const { fcmToken, title, body } = req.body;
+  // استخراج المدخلات الشاملة للجداول الجديدة
+  const { 
+    fcmToken, 
+    user_id, 
+    category, 
+    data_content, 
+    ai_analysis, 
+    title, 
+    body, 
+    scheduled_for 
+  } = req.body;
 
-  // 3. التحقق من وجود التوكن (لمنع خطأ 400)
   if (!fcmToken) {
-    console.error("⚠️ طلب مرفوض: fcmToken مفقود.");
+    console.error("⚠️ fcmToken مفقود.");
     return res.status(400).json({ error: 'fcmToken is required' });
   }
 
-  // 4. فحص أمان المفتاح الخاص قبل محاولة الإرسال لجوجل
-  if (!serviceAccount.private_key) {
-    return res.status(500).json({ error: 'خطأ في إعدادات السيرفر: المفتاح الخاص غير متوفر.' });
-  }
-
   try {
-    // تجهيز رسالة الإشعار
-    const message = {
-      notification: { 
-        title: title || "رقة", 
-        body: body || "تنبيه جديد" 
-      },
-      token: fcmToken
-    };
-
-    // محاولة الإرسال الفعلية عبر FCM
-    const response = await admin.messaging().send(message);
-    
-    console.log("🚀 نجاح: تم إرسال الإشعار بنجاح. ID:", response);
-    return res.status(200).json({ success: true, messageId: response });
-
-  } catch (error) {
     /**
-     * سجل أخطاء مفصل يظهر في Vercel Logs
-     * يساعد في معرفة ما إذا كان الخطأ من التوكن أو من صلاحيات المفتاح
+     * 1. حفظ البيانات في نيون (Neon DB) في الجدول الجديد
      */
-    console.error('❌ فشل إرسال الإشعار. التفاصيل:', {
-      error_code: error.code,       // مثل 'app/invalid-credential' أو 'messaging/invalid-registration-token'
-      error_message: error.message,
-      token_preview: fcmToken.substring(0, 15) + "...",
-      timestamp: new Date().toISOString()
+    const insertQuery = `
+      INSERT INTO notifications (
+        user_id, fcm_token, category, data_content, 
+        ai_analysis, title, body, scheduled_for, is_sent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id
+    `;
+
+    const isScheduled = scheduled_for ? true : false;
+    const values = [
+      user_id || 1,
+      fcmToken,
+      category || 'general',
+      data_content ? JSON.stringify(data_content) : null,
+      ai_analysis || null,
+      title || "رقة",
+      body || "تنبيه جديد",
+      scheduled_for || null,
+      !isScheduled // إذا كان مجدولاً للمستقبل يكون false، وإذا كان فورياً يكون true
+    ];
+
+    const dbResult = await pool.query(insertQuery, values);
+    const dbId = dbResult.rows[0].id;
+    console.log("🔹 تم حفظ البيانات في نيون بنجاح. معرف السجل:", dbId);
+
+    /**
+     * 2. الإرسال الفوري عبر Firebase (فقط إذا لم يكن الإشعار مجدولاً لوقت لاحق)
+     */
+    let firebaseResponse = null;
+    if (!isScheduled) {
+      const message = {
+        notification: { 
+          title: title || "رقة", 
+          body: body || "تنبيه جديد" 
+        },
+        token: fcmToken
+      };
+      firebaseResponse = await admin.messaging().send(message);
+      console.log("🚀 نجاح الإرسال الفوري لـ Firebase. ID:", firebaseResponse);
+    } else {
+      console.log("📅 تم جدولة الإشعار في نيون لموعد:", scheduled_for);
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      db_id: dbId, 
+      messageId: firebaseResponse,
+      mode: isScheduled ? 'scheduled' : 'instant'
     });
 
-    // إرسال رد تفصيلي للمساعدة في التصحيح
+  } catch (error) {
+    console.error('❌ خطأ في السيرفر:', error);
     return res.status(500).json({ 
-      error: 'فشل الإرسال لجوجل', 
-      code: error.code,
+      error: 'فشل في المعالجة', 
       debug: error.message 
     });
   }
