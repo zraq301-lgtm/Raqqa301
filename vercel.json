@@ -17,15 +17,6 @@
         { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
         { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
       ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
-        }
-      ]
     }
   ],
   "rewrites": [
@@ -34,31 +25,7 @@
       "destination": "/api/$1"
     },
     {
-      "source": "/swing.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/insight.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/health.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/vr-world.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/videos.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/notifications.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
