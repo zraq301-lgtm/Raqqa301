@@ -7,17 +7,17 @@ import { initializeApp, getApps } from "firebase/app";
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
-// إعدادات Firebase
+// إعدادات Firebase المربوطة بمشروع raqqa-43dc8
 const firebaseConfig = {
   apiKey: "AIzaSyAKjsgnoHnGGr3urhm6Kpu7RvxN2dp6sJQ",
   authDomain: "raqqa-43dc8.firebaseapp.com",
-  projectId: "raqqa-43dc8",
+  projectId: "raqqa-43dc8", // يطابق ملف الخدمة الجديد
   storageBucket: "raqqa-43dc8.firebasestorage.app",
-  messagingSenderId: "162488255991",
+  messagingSenderId: "162488255991", // معرف الإرسال الصحيح للمشروع
   appId: "1:162488255991:android:73d6299f11a1b7aec61af2"
 };
 
-// تهيئة Firebase بأمان
+// تهيئة Firebase في الواجهة الأمامية بأمان
 if (!getApps().length) {
   initializeApp(firebaseConfig);
 }
@@ -26,39 +26,40 @@ const Main = () => {
   
   // وظيفة الحفظ وإرسال التوكن للباك اند (Vercel)
   const saveTokenToServer = async (tokenValue) => {
-    // التعديل الجديد: منع الإرسال إذا كان التوكن فارغاً (لتجنب خطأ 400)
+    // التحقق من وجود التوكن لمنع أخطاء 400 في السيرفر
     if (!tokenValue) {
-      console.log("التوكن غير متوفر بعد، تم إلغاء الإرسال التلقائي.");
+      console.log("⚠️ التوكن غير متوفر بعد، تم إلغاء الإرسال.");
       return;
     }
 
     try {
-      // حفظ التوكن في الذاكرة المحلية فوراً
+      // 1. حفظ التوكن في الذاكرة المحلية لاستخدام الصفحات الداخلية
       localStorage.setItem('fcm_token', tokenValue);
       
+      // 2. إنشاء أو جلب معرف المستخدم
       const uId = localStorage.getItem('user_id') || 'user_' + Math.floor(Math.random() * 1000000);
       if (!localStorage.getItem('user_id')) localStorage.setItem('user_id', uId);
 
-      // إرسال البيانات إلى Vercel API
+      // 3. إرسال البيانات إلى Vercel API المحدث بالمفتاح الجديد
       const response = await CapacitorHttp.post({
         url: 'https://raqqa-hjl8.vercel.app/api/save-notifications', 
         headers: { 'Content-Type': 'application/json' },
         data: {
-          fcmToken: tokenValue, // الاسم المتوافق مع الباك اند الجديد
+          fcmToken: tokenValue, // الحقل الذي ينتظره الباك اند
           user_id: uId,
           username: localStorage.getItem('username') || 'زائرة رقة',
           category: 'تسجيل تلقائي عند الفتح',
-          note: 'تم استلام التوكن بنجاح بعد منح الصلاحية'
+          note: 'تم التحديث بالمفتاح الجديد a2263' // علامة اختيارية للتأكد من التحديث
         }
       });
-      console.log("استجابة السيرفر:", response.data);
+      console.log("✅ استجابة السيرفر:", response.data);
     } catch (err) {
-      console.error("فشل إرسال البيانات للباك اند:", err);
+      console.error("❌ فشل إرسال البيانات للباك اند:", err);
     }
   };
 
   useEffect(() => {
-    // تشغيل المنطق فقط على منصات الهواتف (Android/iOS)
+    // تشغيل منطق الإشعارات فقط على منصات الهواتف
     if (Capacitor.isNativePlatform()) {
       
       const initPush = async () => {
@@ -70,33 +71,30 @@ const Main = () => {
           }
 
           if (permStatus.receive === 'granted') {
-            // التسجيل لجلب التوكن من Firebase
+            // طلب التوكن من خوادم Firebase
             await PushNotifications.register();
           }
         } catch (error) {
-          console.error("خطأ في تهيئة الإشعارات:", error);
+          console.error("Push Init Error:", error);
         }
       };
 
       initPush();
 
-      // مستمع استلام التوكن (يعمل فور نجاح التسجيل)
+      // مستمع استلام التوكن الناجح
       PushNotifications.addListener('registration', (token) => {
         const fcmToken = token.value;
-        console.log("FCM Token Generated:", fcmToken);
-        
-        // استدعاء دالة الحفظ مع التوكن المستلم
+        console.log("🚀 FCM Token Generated:", fcmToken);
         saveTokenToServer(fcmToken);
       });
 
-      // مستمع أخطاء التسجيل
+      // معالجة أخطاء التسجيل (مثل عدم توفر خدمات جوجل)
       PushNotifications.addListener('registrationError', (error) => {
-        console.error("خطأ في تسجيل التوكن: ", error.error);
+        console.error("Registration Error: ", error.error);
       });
 
-      // معالجة استلام الإشعار والتطبيق مفتوح
+      // إظهار تنبيه عند استلام إشعار والتطبيق مفتوح
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        // يمكنك استبدال alert بـ Toast أو Notification UI مخصص
         alert(`${notification.title}\n${notification.body}`);
       });
     }
