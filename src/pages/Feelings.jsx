@@ -3,47 +3,44 @@ import axios from 'axios';
 
 const PostDashboard = () => {
   const [content, setContent] = useState('');
-  const [mediaType, setMediaType] = useState('none'); 
-  const [file, setFile] = useState(null);
   const [mediaUrl, setMediaUrl] = useState('');
+  const [selectedSection, setSelectedSection] = useState("bouh-display-1");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   const API_URL = "https://raqqa-ruddy.vercel.app/api/save-post";
 
-  const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!content.trim() && !mediaUrl.trim()) {
+      setMessage("⚠️ يرجى كتابة نص أو وضع رابط");
+      return;
+    }
+
     setLoading(true);
     setMessage('');
 
-    try {
-      // 1. تحضير البيانات ككائن عادي (JSON)
-      const postData = {
-        content: content,
-        mediaType: mediaType,
-        mediaUrl: mediaUrl,
-      };
+    // إعداد البيانات بنفس الطريقة التي نجحت في كود الواجهة
+    const payload = {
+      content: content,
+      section: selectedSection,
+      type: mediaUrl ? "رابط" : "نصي",
+      external_link: mediaUrl 
+    };
 
-      // 2. إرسال الطلب بصيغة JSON
-      const response = await axios.post(API_URL, postData, {
-        headers: { 
-          'Content-Type': 'application/json' 
-        }
+    try {
+      // إرسال البيانات كـ JSON (وليس FormData) لضمان عدم تشوه الرابط
+      const response = await axios.post(API_URL, payload, {
+        headers: { 'Content-Type': 'application/json' }
       });
 
       if (response.status === 200 || response.status === 201) {
-        setMessage('✅ تم الرفع بنجاح!');
+        setMessage('✅ تم النشر بنجاح! سيظهر الفيديو الآن في الواجهة.');
         setContent('');
         setMediaUrl('');
-        setFile(null);
       }
     } catch (error) {
-      console.error("Server Error:", error.response?.data);
-      setMessage('❌ فشل في عملية الرفع: ' + (error.response?.data?.error || error.message));
+      setMessage('❌ فشل في عملية الرفع: ' + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
@@ -51,57 +48,56 @@ const PostDashboard = () => {
 
   return (
     <div style={styles.container}>
-      <h2>لوحة تحكم إضافة منشور</h2>
+      <h2 style={styles.title}>لوحة تحكم رقة</h2>
       
       <form onSubmit={handleSubmit} style={styles.form}>
+        <label>القسم:</label>
+        <select 
+          value={selectedSection} 
+          onChange={(e) => setSelectedSection(e.target.value)}
+          style={styles.input}
+        >
+          <option value="bouh-display-1">حكايات لا تنتهي</option>
+          <option value="bouh-display-2">ملاذ القلوب</option>
+          <option value="bouh-display-3">قوة لترعيك</option>
+        </select>
+
         <label>محتوى المنشور (نص):</label>
         <textarea 
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="ماذا يدور في ذهنك؟"
+          placeholder="اكتبي هنا..."
           style={styles.textarea}
         />
 
-        <label>إضافة وسائط:</label>
-        <select 
-          value={mediaType} 
-          onChange={(e) => setMediaType(e.target.value)}
+        <label>رابط الفيديو أو الصورة (YouTube/Neon):</label>
+        <input 
+          type="url" 
+          placeholder="ضعي الرابط هنا..." 
+          value={mediaUrl}
+          onChange={(e) => setMediaUrl(e.target.value)}
           style={styles.input}
-        >
-          <option value="none">بدون وسائط (نص فقط)</option>
-          <option value="image_url">رابط صورة خارجي</option>
-          <option value="video_url">رابط فيديو خارجي</option>
-        </select>
+        />
 
-        {(mediaType === 'image_url' || mediaType === 'video_url') && (
-          <input 
-            type="url" 
-            placeholder="ضع الرابط هنا..." 
-            value={mediaUrl}
-            onChange={(e) => setMediaUrl(e.target.value)}
-            style={styles.input}
-          />
-        )}
-
-        <button type="submit" disabled={loading} style={styles.button}>
-          {loading ? 'جاري الرفع...' : 'نشر الآن'}
+        <button type="submit" disabled={loading} style={{...styles.button, backgroundColor: loading ? '#ccc' : '#ff4d7d'}}>
+          {loading ? 'جاري النشر...' : 'نشر الآن'}
         </button>
       </form>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {message && <p style={{...styles.message, color: message.includes('✅') ? '#2ecc71' : '#e74c3c'}}>{message}</p>}
     </div>
   );
 };
 
-// تنسيقات بسيطة
+// التنسيقات (متوافقة مع ذوق تطبيق رقة)
 const styles = {
-  container: { maxWidth: '500px', margin: '50px auto', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', direction: 'rtl', fontFamily: 'Arial' },
+  container: { maxWidth: '500px', margin: '40px auto', padding: '30px', borderRadius: '30px', direction: 'rtl', fontFamily: 'Tajawal, sans-serif', boxShadow: '0 15px 35px rgba(255, 77, 125, 0.1)', background: '#fff', border: '1px solid #ff4d7d11' },
+  title: { textAlign: 'center', color: '#ff4d7d', marginBottom: '20px' },
   form: { display: 'flex', flexDirection: 'column', gap: '15px' },
-  textarea: { minHeight: '100px', padding: '10px', borderRadius: '4px' },
-  input: { padding: '10px', borderRadius: '4px', border: '1px solid #ccc' },
-  button: { padding: '12px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+  textarea: { minHeight: '120px', padding: '15px', borderRadius: '15px', border: '1px solid #f0f0f0', outline: 'none', background: '#fafafa', fontSize: '1rem' },
+  input: { padding: '12px', borderRadius: '12px', border: '1px solid #f0f0f0', outline: 'none', background: '#fafafa' },
+  button: { padding: '15px', color: 'white', border: 'none', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem', transition: '0.3s' },
   message: { marginTop: '20px', fontWeight: 'bold', textAlign: 'center' }
 };
 
-// التصدير الافتراضي الضروري لـ Vercel
 export default PostDashboard;
