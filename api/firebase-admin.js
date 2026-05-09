@@ -1,65 +1,66 @@
 import admin from 'firebase-admin';
 
-// 1. إعداد بيانات الاعتماد الخاصة بـ Firebase
-const serviceAccount = {
-  "type": "service_account",
-  "project_id": "raqqa-43dc8",
-  "client_email": "firebase-adminsdk-fbsvc@raqqa-43dc8.iam.gserviceaccount.com",
-  // معالجة مفتاح الخصوصية لضمان عمله في بيئة الإنتاج (Vercel)
-  "private_key": process.env.FIREBASE_PRIVATE_KEY 
-    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
-    : undefined,
-};
+// التأكد من أن المتغيرات البيئية موجودة لتجنب توقف الخادم (خطأ 500)
+const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+const clientEmail = "firebase-adminsdk-fbsvc@raqqa-43dc8.iam.gserviceaccount.com";
+const projectId = "raqqa-43dc8";
 
-// 2. تهيئة التطبيق (مرة واحدة فقط)
+if (!privateKey) {
+  throw new Error("خطأ: FIREBASE_PRIVATE_KEY غير معرف في إعدادات Vercel");
+}
+
+// تهيئة Firebase Admin بطريقة تمنع تكرار التهيئة وتدعم الإصدار 12
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: projectId,
+        clientEmail: clientEmail,
+        // معالجة المفتاح بشكل دقيق جداً
+        privateKey: privateKey.replace(/\\n/g, '\n'),
+      }),
+    });
+  } catch (error) {
+    console.error('Firebase initialization error', error);
+  }
 }
 
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  // 3. التحقق من هوية الطلب (Bearer Token)
   const expectedSecret = "zazo.tona.25sond.12"; 
   const authHeader = req.headers['authorization'];
 
   if (authHeader !== `Bearer ${expectedSecret}`) {
-    return res.status(401).json({ error: 'غير مسموح بالدخول - Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // 4. حصر الوظيفة في الإضافة فقط (POST)
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'عذراً، هذه النهاية مخصصة للإضافة فقط' });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
     const { title, url, category } = req.body;
 
-    // التحقق من البيانات المرسلة
     if (!title || !url) {
-      return res.status(400).json({ error: 'العنوان والرابط حقول إجبارية' });
+      return res.status(400).json({ error: 'Title and URL are required' });
     }
 
-    // 5. إضافة البيانات إلى Firestore (مجموعة videos)
+    // إضافة الفيديو إلى مجموعة 'videos'
     const docRef = await db.collection('videos').add({
-      title: title,
-      url: url,
+      title,
+      url,
       category: category || "عام",
-      created_at: admin.firestore.FieldValue.serverTimestamp() // توقيت الخادم
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // الاستجابة في حال النجاح
     return res.status(200).json({ 
       success: true, 
-      id: docRef.id,
-      message: "تم حفظ الفيديو بنجاح في قاعدة البيانات" 
+      id: docRef.id 
     });
 
   } catch (error) {
-    // معالجة الأخطاء
-    console.error("Firebase Add Error:", error);
-    return res.status(500).json({ error: "حدث خطأ أثناء الرفع: " + error.message });
+    // إرسال تفاصيل الخطأ لكي تظهر لك في التطبيق بدلاً من خطأ 500 مبهم
+    return res.status(500).json({ error: error.message });
   }
 }
