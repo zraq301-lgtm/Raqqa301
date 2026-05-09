@@ -1,123 +1,67 @@
-import React, { useState, Suspense, lazy } from 'react';
-import { iconMap } from '../constants/iconMap';
+import React, { useState } from 'react';
 
-// استيراد الصفحات بنظام التحميل الكسول
-const MenstrualTracker = lazy(() => import('./HealthPages/MenstrualTracker'));
-const Advice = lazy(() => import('./HealthPages/Advice'));
-const PregnancyMonitor = lazy(() => import('./HealthPages/PregnancyMonitor'));
-const LactationHub = lazy(() => import('./HealthPages/LactationHub'));
-const DoctorClinical = lazy(() => import('./HealthPages/DoctorClinical'));
-const FitnessWellness = lazy(() => import('./HealthPages/FitnessWellness'));
-const Motherhood = lazy(() => import('./HealthPages/Motherhood'));
+function AddVideoForm() {
+  const [formData, setFormData] = useState({ title: '', url: '', category: '' });
+  const [status, setStatus] = useState('');
 
-const Health = () => {
-  const [activeTab, setActiveTab] = useState(null);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setStatus('جاري الرفع...');
 
-  const sections = [
-    { id: 'menstrual', title: 'الحيض', img: 'menstrual.png', icon: 'health', component: MenstrualTracker, pos: { gridColumn: '1', gridRow: '1' } },
-    { id: 'advice', title: 'نصيحة طبيب', img: 'advice.png', icon: 'chat', component: Advice, pos: { gridColumn: '2', gridRow: '1' } },
-    { id: 'pregnancy', title: 'حمل', img: 'pregnancy.png', icon: 'intimacy', component: PregnancyMonitor, pos: { gridColumn: '3', gridRow: '1' } },
-    { id: 'motherhood', title: 'الأمومة', img: 'motherhood.png', icon: 'feelings', component: Motherhood, pos: { gridColumn: '2', gridRow: '2' } },
-    { id: 'doctor', title: 'الطبيب', img: 'doctor.png', icon: 'insight', component: DoctorClinical, pos: { gridColumn: '3', gridRow: '3' } },
-    { id: 'fitness', title: 'الرشاقة', img: 'fitness.png', icon: 'health', component: FitnessWellness, pos: { gridColumn: '2', gridRow: '3' } },
-    { id: 'lactation', title: 'الرضاعة', img: 'lactation.png', icon: 'feelings', component: LactationHub, pos: { gridColumn: '1', gridRow: '3' } },
-  ];
+    try {
+      const response = await fetch('/api/add-video', { // استبدله برابط الـ API الخاص بك
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer zazo.tona.25sond.12'
+        },
+        body: JSON.stringify(formData),
+      });
 
-  const styles = {
-    container: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(3, 1fr)',
-      gap: '10px',
-      padding: '10px',
-      direction: 'rtl',
-      background: '#f9f9f9',
-      height: '100vh',
-      boxSizing: 'border-box'
-    },
-    fullScreenComponent: {
-      width: '100%',
-      height: '100vh',
-      background: '#fff',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      zIndex: 100,
-      overflowY: 'auto'
-    },
-    card: {
-      background: '#fff',
-      borderRadius: '15px',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      cursor: 'pointer',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-      position: 'relative',
-      height: '100%'
-    },
-    image: {
-      width: '100%',
-      height: '80%',
-      objectFit: 'cover',
-    },
-    footer: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '5px',
-      padding: '5px',
-      height: '20%'
-    },
-    backButton: {
-        position: 'fixed',
-        bottom: '20px',
-        left: '20px',
-        padding: '10px 20px',
-        backgroundColor: '#ad1457',
-        color: 'white',
-        borderRadius: '25px',
-        border: 'none',
-        zIndex: 101,
-        cursor: 'pointer'
+      const data = await response.json();
+      if (data.success) {
+        setStatus('✅ تم رفع الفيديو بنجاح إلى فيربيس!');
+        setFormData({ title: '', url: '', category: '' });
+      } else {
+        setStatus('❌ فشل الرفع: ' + data.error);
+      }
+    } catch (error) {
+      setStatus('❌ حدث خطأ في الاتصال');
     }
   };
 
-  if (activeTab) {
-    const activeSection = sections.find(s => s.id === activeTab);
-    return (
-      <div style={styles.fullScreenComponent}>
-        <button style={styles.backButton} onClick={() => setActiveTab(null)}>عودة</button>
-        <Suspense fallback={<p style={{textAlign: 'center', marginTop: '50px'}}>جاري التحميل...</p>}>
-          {activeSection && activeSection.component ? <activeSection.component /> : <div style={{padding: '20px', textAlign: 'center'}}>قريباً...</div>}
-        </Suspense>
-      </div>
-    );
-  }
-
   return (
-    <div style={styles.container}>
-      {sections.map((sec) => {
-        const Icon = iconMap[sec.icon] || iconMap.insight;
-        return (
-          <div 
-            key={sec.id} 
-            style={{ ...styles.card, ...sec.pos }}
-            onClick={() => setActiveTab(sec.id)}
-          >
-            <img 
-              src={new URL(`../assets/health/${sec.img}`, import.meta.url).href} 
-              alt={sec.title} 
-              style={styles.image} 
-            />
-            <div style={styles.footer}>
-              <Icon size={16} color="#ad1457" />
-              <span style={{ fontWeight: 'bold', color: '#333', fontSize: '12px' }}>{sec.title}</span>
-            </div>
-          </div>
-        );
-      })}
+    <div style={{ padding: '20px', maxWidth: '400px', margin: '0 auto', textAlign: 'right' }}>
+      <h3>إضافة فيديو جديد لعالم رقة</h3>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <input 
+          placeholder="عنوان الفيديو" 
+          value={formData.title}
+          onChange={(e) => setFormData({...formData, title: e.target.value})}
+          required 
+        />
+        <input 
+          placeholder="رابط الفيديو (YouTube)" 
+          value={formData.url}
+          onChange={(e) => setFormData({...formData, url: e.target.value})}
+          required 
+        />
+        <select 
+          value={formData.category}
+          onChange={(e) => setFormData({...formData, category: e.target.value})}
+        >
+          <option value="">اختر الفئة</option>
+          <option value="عقلي">عقلي</option>
+          <option value="صحي">صحي</option>
+          <option value="مشاعري">مشاعري</option>
+        </select>
+        <button type="submit" style={{ backgroundColor: '#ff4081', color: '#fff', border: 'none', padding: '10px' }}>
+          رفع إلى فيربيس
+        </button>
+      </form>
+      {status && <p>{status}</p>}
     </div>
   );
-};
+}
 
-export default Health;
+export default AddVideoForm;
