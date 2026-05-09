@@ -1,67 +1,53 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { CapacitorHttp } from '@capacitor/core';
 
-function AddVideoForm() {
-  const [formData, setFormData] = useState({ title: '', url: '', category: '' });
-  const [status, setStatus] = useState('');
+const Health = () => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus('جاري الرفع...');
+  const fetchData = async () => {
+    const options = {
+      url: 'https://raqqa301-qtjkbz74v-raqqs-projects.vercel.app/api/firebase-admin', // رابط الـ API
+      headers: { 
+        'Authorization': 'Bearer zazo.tona.25sond.12',
+        'Content-Type': 'application/json' 
+      },
+    };
 
     try {
-      const response = await fetch('/api/add-video', { // استبدله برابط الـ API الخاص بك
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer zazo.tona.25sond.12'
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setStatus('✅ تم رفع الفيديو بنجاح إلى فيربيس!');
-        setFormData({ title: '', url: '', category: '' });
-      } else {
-        setStatus('❌ فشل الرفع: ' + data.error);
+      // استخدام الاتصال الخارجي عبر كاباسيتور
+      const response = await CapacitorHttp.get(options);
+      
+      if (response.status === 200) {
+        setData(response.data);
       }
     } catch (error) {
-      setStatus('❌ حدث خطأ في الاتصال');
+      console.error('حدث خطأ أثناء جلب البيانات:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  if (loading) return <div className="loader">جاري التحميل...</div>;
+
   return (
-    <div style={{ padding: '20px', maxWidth: '400px', margin: '0 auto', textAlign: 'right' }}>
-      <h3>إضافة فيديو جديد لعالم رقة</h3>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <input 
-          placeholder="عنوان الفيديو" 
-          value={formData.title}
-          onChange={(e) => setFormData({...formData, title: e.target.value})}
-          required 
-        />
-        <input 
-          placeholder="رابط الفيديو (YouTube)" 
-          value={formData.url}
-          onChange={(e) => setFormData({...formData, url: e.target.value})}
-          required 
-        />
-        <select 
-          value={formData.category}
-          onChange={(e) => setFormData({...formData, category: e.target.value})}
-        >
-          <option value="">اختر الفئة</option>
-          <option value="عقلي">عقلي</option>
-          <option value="صحي">صحي</option>
-          <option value="مشاعري">مشاعري</option>
-        </select>
-        <button type="submit" style={{ backgroundColor: '#ff4081', color: '#fff', border: 'none', padding: '10px' }}>
-          رفع إلى فيربيس
-        </button>
-      </form>
-      {status && <p>{status}</p>}
+    <div className="health-page">
+      <h2>قائمة الفيديوهات الصحية</h2>
+      <div className="video-list">
+        {data.map((item) => (
+          <div key={item.id} className="video-card">
+            <h4>{item.title}</h4>
+            <p>الفئة: {item.category}</p>
+            <a href={item.url} target="_blank" rel="noopener noreferrer">مشاهدة الفيديو</a>
+          </div>
+        ))}
+      </div>
     </div>
   );
-}
+};
 
-export default AddVideoForm;
+export default Health;
